@@ -1,0 +1,21 @@
+[package]
+name = "ht_dungeon_app"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "ht_dungeon"
+path = "src/main.rs"
+
+[dependencies]
+ht_dungeon_core = { path = "../ht_dungeon_core" }
+wgpu = "22"
+winit = "0.30"
+egui = "0.29"
+egui-wgpu = "0.29"
+egui-winit = "0.29"
+crossbeam-channel = "0.5"
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.3"
+log = "0.4"
+env_logger = "0.11"

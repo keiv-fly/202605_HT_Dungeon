@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "crates/ht_dungeon_core",
+    "crates/ht_dungeon_app",
+]
+resolver = "2"
