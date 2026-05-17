@@ -82,6 +82,8 @@ impl ApplicationHandler for App {
 
         let camera = Camera::new(40.0, 30.0);
         let size = window.inner_size();
+        let mut input = InputState::default();
+        input.screen_size = (size.width as f32, size.height as f32);
 
         self.state = Some(RenderState {
             window,
@@ -89,10 +91,7 @@ impl ApplicationHandler for App {
             egui_ctx,
             egui_winit,
             camera,
-            input: InputState {
-                screen_size: (size.width as f32, size.height as f32),
-                ..Default::default()
-            },
+            input,
             snapshot: None,
             initial_camera_centered: false,
             command_tx,
@@ -141,17 +140,20 @@ impl ApplicationHandler for App {
             }
 
             WindowEvent::CursorMoved { position, .. } => {
-                state.input.cursor_pos = (position.x as f32, position.y as f32);
+                state
+                    .input
+                    .on_cursor_moved((position.x as f32, position.y as f32), &mut state.camera);
             }
 
             WindowEvent::MouseInput {
                 button,
                 state: btn_state,
                 ..
-            } if !egui_consumed => {
-                if let Some(cmd) = state
-                    .input
-                    .on_mouse_button(button, btn_state, &state.camera)
+            } => {
+                if let Some(cmd) =
+                    state
+                        .input
+                        .on_mouse_button(button, btn_state, &state.camera, egui_consumed)
                 {
                     let _ = state.command_tx.try_send(cmd);
                 }
