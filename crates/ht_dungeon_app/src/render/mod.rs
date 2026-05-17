@@ -5,7 +5,7 @@ use wgpu::util::DeviceExt;
 
 use ht_dungeon_core::dungeon::TileKind;
 use ht_dungeon_core::entity::EntityKind;
-use ht_dungeon_core::snapshot::RenderSnapshot;
+use ht_dungeon_core::snapshot::{AttackAnimationRenderData, RenderSnapshot};
 
 use crate::camera::Camera;
 
@@ -916,6 +916,7 @@ fn build_batches(snapshot: &RenderSnapshot, show_hero_circle: bool) -> RenderBat
         }
         match e.kind {
             EntityKind::Hero => {
+                let attack_offset = attack_animation_offset(e.kind, e.attack_animation.as_ref());
                 if show_hero_circle {
                     circles.push(QuadInstance {
                         world_pos: [e.position.x, e.position.y],
@@ -925,13 +926,20 @@ fn build_batches(snapshot: &RenderSnapshot, show_hero_circle: bool) -> RenderBat
                     });
                 }
                 hero_sprites.push(SpriteInstance {
-                    world_pos: [e.position.x, e.position.y],
+                    world_pos: [
+                        e.position.x + attack_offset[0],
+                        e.position.y + attack_offset[1],
+                    ],
                     size: [HERO_WORLD_WIDTH, HERO_WORLD_HEIGHT],
                 });
             }
             EntityKind::Rat => {
+                let attack_offset = attack_animation_offset(e.kind, e.attack_animation.as_ref());
                 rat_sprites.push(SpriteInstance {
-                    world_pos: [e.position.x, e.position.y],
+                    world_pos: [
+                        e.position.x + attack_offset[0],
+                        e.position.y + attack_offset[1],
+                    ],
                     size: [RAT_WORLD_WIDTH, RAT_WORLD_HEIGHT],
                 });
             }
@@ -944,4 +952,56 @@ fn build_batches(snapshot: &RenderSnapshot, show_hero_circle: bool) -> RenderBat
         hero_sprites,
         rat_sprites,
     }
+}
+
+fn attack_animation_offset(
+    kind: EntityKind,
+    animation: Option<&AttackAnimationRenderData>,
+) -> [f32; 2] {
+    let Some(animation) = animation else {
+        return [0.0, 0.0];
+    };
+
+    let pixels = match kind {
+        EntityKind::Hero => sample_timeline(
+            animation.elapsed,
+            &[
+                (0.0, 0.0),
+                (0.08, -2.0),
+                (0.14, 7.0),
+                (0.22, 3.0),
+                (0.36, 0.0),
+            ],
+        ),
+        EntityKind::Rat => sample_timeline(
+            animation.elapsed,
+            &[(0.0, 0.0), (0.06, -1.0), (0.11, 6.0), (0.21, 0.0)],
+        ),
+    };
+    let world_per_pixel = match kind {
+        EntityKind::Hero => HERO_WORLD_HEIGHT / HERO_SPRITE_HEIGHT,
+        EntityKind::Rat => RAT_WORLD_HEIGHT / RAT_SPRITE_HEIGHT,
+    };
+
+    [
+        animation.direction.x * pixels * world_per_pixel,
+        animation.direction.y * pixels * world_per_pixel,
+    ]
+}
+
+fn sample_timeline(elapsed: f32, keys: &[(f32, f32)]) -> f32 {
+    if elapsed <= keys[0].0 {
+        return keys[0].1;
+    }
+
+    for window in keys.windows(2) {
+        let (start_time, start_value) = window[0];
+        let (end_time, end_value) = window[1];
+        if elapsed <= end_time {
+            let t = ((elapsed - start_time) / (end_time - start_time)).clamp(0.0, 1.0);
+            return start_value + (end_value - start_value) * t;
+        }
+    }
+
+    keys[keys.len() - 1].1
 }

@@ -183,10 +183,26 @@ impl MovementState {
 pub struct CombatState {
     pub attack_damage_min: i32,
     pub attack_damage_max: i32,
+    /// Center-to-center attack reach, independent from collision radius.
     pub attack_range: f32,
     pub attack_cooldown: f32,
     pub cooldown_remaining: f32,
     pub target: Option<EntityId>,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct AttackAnimationState {
+    pub direction: Vec2,
+    pub elapsed: f32,
+}
+
+impl AttackAnimationState {
+    pub fn new(direction: Vec2) -> Self {
+        Self {
+            direction: direction.normalized(),
+            elapsed: 0.0,
+        }
+    }
 }
 
 impl CombatState {
@@ -215,6 +231,7 @@ pub struct Entity {
     pub faction: Faction,
     pub movement: MovementState,
     pub combat: CombatState,
+    pub attack_animation: Option<AttackAnimationState>,
     pub rat_ai: Option<RatAiState>,
     pub alive: bool,
 }
@@ -233,11 +250,12 @@ impl Entity {
             combat: CombatState {
                 attack_damage_min: 1,
                 attack_damage_max: 2,
-                attack_range: 0.75,
+                attack_range: 1.3,
                 attack_cooldown: 0.7,
                 cooldown_remaining: 0.0,
                 target: None,
             },
+            attack_animation: None,
             rat_ai: None,
             alive: true,
         }
@@ -256,11 +274,12 @@ impl Entity {
             combat: CombatState {
                 attack_damage_min: 1,
                 attack_damage_max: 1,
-                attack_range: 0.65,
+                attack_range: 1.2,
                 attack_cooldown: 1.0,
                 cooldown_remaining: 0.0,
                 target: None,
             },
+            attack_animation: None,
             rat_ai: Some(RatAiState {
                 state: RatState::Idle,
                 lost_sight_timer: 0.0,
@@ -281,14 +300,14 @@ impl Entity {
     }
 
     pub fn attack_enter_range(&self) -> f32 {
-        self.radius + self.combat.attack_range
+        self.combat.attack_range
     }
 
-    pub fn attack_exit_range(&self, target_radius: f32) -> f32 {
-        self.radius + target_radius + self.combat.attack_range + 0.20
+    pub fn attack_exit_range(&self) -> f32 {
+        self.combat.attack_range + 0.20
     }
 
-    pub fn stop_distance(&self, target_radius: f32) -> f32 {
-        self.radius + target_radius + self.combat.attack_range
+    pub fn stop_distance(&self) -> f32 {
+        self.combat.attack_range
     }
 }

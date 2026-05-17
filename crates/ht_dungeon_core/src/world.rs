@@ -6,13 +6,19 @@ use crate::commands::PlayerCommand;
 use crate::dungeon::{
     load_standard_dungeon, DungeonSpawn, DungeonSpawnKind, Room, TileKind, TileMap,
 };
-use crate::entity::{world_to_tile, Entity, EntityId, EntityKind, Faction, ItemId, RatState, Vec2};
+use crate::entity::{
+    world_to_tile, AttackAnimationState, Entity, EntityId, EntityKind, Faction, ItemId, RatState,
+    Vec2,
+};
 use crate::inventory::{GroundItem, Inventory, ItemKind, PICKUP_RADIUS, RAT_SIGHT_RANGE};
 use crate::pathfinding::{find_path, nearest_walkable};
 use crate::snapshot::{
-    EntityRenderData, GameState, HeroStatus, InspectInfo, InventoryView, ItemRenderData,
-    RenderSnapshot, TileRenderData,
+    AttackAnimationRenderData, EntityRenderData, GameState, HeroStatus, InspectInfo, InventoryView,
+    ItemRenderData, RenderSnapshot, TileRenderData,
 };
+
+const HERO_ATTACK_ANIMATION_SECONDS: f32 = 0.36;
+const RAT_ATTACK_ANIMATION_SECONDS: f32 = 0.21;
 
 pub struct GameWorld {
     pub rng_seed: u64,
@@ -172,6 +178,7 @@ impl GameWorld {
         self.tick_count += 1;
 
         self.update_combat_cooldowns(dt);
+        self.update_attack_animations(dt);
         self.update_rat_ai(dt);
         self.update_movement(dt);
         self.resolve_actor_separation();
@@ -327,12 +334,7 @@ impl GameWorld {
             None => return,
         };
         let hero_pos = self.hero().position;
-        let target_radius = self
-            .entities
-            .iter()
-            .find(|e| e.id == enemy_id)
-            .map_or(0.25, |e| e.radius);
-        let stop_dist = self.hero().stop_distance(target_radius);
+        let stop_dist = self.hero().stop_distance();
 
         if hero_pos.distance_to(enemy_pos) > stop_dist + 0.05 {
             let hero_radius = self.hero().radius;
@@ -365,6 +367,23 @@ impl GameWorld {
         }
     }
 
+    fn update_attack_animations(&mut self, dt: f32) {
+        for e in &mut self.entities {
+            let Some(animation) = &mut e.attack_animation else {
+                continue;
+            };
+            animation.elapsed += dt;
+
+            let duration = match e.kind {
+                EntityKind::Hero => HERO_ATTACK_ANIMATION_SECONDS,
+                EntityKind::Rat => RAT_ATTACK_ANIMATION_SECONDS,
+            };
+            if animation.elapsed >= duration {
+                e.attack_animation = None;
+            }
+        }
+    }
+
     fn update_rat_ai(&mut self, dt: f32) {
         let hero_pos = self.hero().position;
         let hero_id = self.hero_id;
@@ -389,7 +408,7 @@ impl GameWorld {
                     }
                 }
                 RatState::ChasingHero => {
-                    let stop = self.entities[i].stop_distance(0.30);
+                    let stop = self.entities[i].stop_distance();
                     if dist <= stop {
                         RatState::AttackingHero
                     } else if can_see {
@@ -404,7 +423,7 @@ impl GameWorld {
                     }
                 }
                 RatState::AttackingHero => {
-                    let exit = self.entities[i].attack_exit_range(0.30);
+                    let exit = self.entities[i].attack_exit_range();
                     if dist > exit {
                         RatState::ChasingHero
                     } else {
@@ -427,7 +446,7 @@ impl GameWorld {
                 Some(RatState::ChasingHero) => {
                     let rat_pos = self.entities[i].position;
                     let rat_radius = self.entities[i].radius;
-                    let stop = self.entities[i].stop_distance(0.30);
+                    let stop = self.entities[i].stop_distance();
                     if rat_pos.distance_to(hero_pos) > stop {
                         if self.entities[i].movement.attack_target != Some(hero_id) {
                             if let Some(path) = find_path(map_ref, rat_pos, hero_pos, rat_radius) {
@@ -465,16 +484,13 @@ impl GameWorld {
                     .find(|e| e.id == tid && e.alive)
                     .map(|e| e.position)
             });
-            let attack_target_radius = attack_target_id
-                .and_then(|tid| self.entities.iter().find(|e| e.id == tid).map(|e| e.radius))
-                .unwrap_or(0.25);
 
             let entity = &mut self.entities[i];
 
             if let Some(target_pos) = attack_target_pos {
                 let dist = entity.position.distance_to(target_pos);
-                let stop = entity.stop_distance(attack_target_radius);
-                let exit = entity.attack_exit_range(attack_target_radius);
+                let stop = entity.stop_distance();
+                let exit = entity.attack_exit_range();
 
                 if entity.movement.is_in_attack_range {
                     if dist > exit {
@@ -551,25 +567,22 @@ impl GameWorld {
                 continue;
             }
             let attacker_pos = self.entities[i].position;
-            let attacker_radius = self.entities[i].radius;
             let attack_range = self.entities[i].combat.attack_range;
             let target_id = match self.entities[i].combat.target {
                 Some(id) => id,
                 None => continue,
             };
 
-            let (target_pos, target_radius) =
-                match self.entities.iter().find(|e| e.id == target_id && e.alive) {
-                    Some(t) => (t.position, t.radius),
-                    None => {
-                        self.entities[i].combat.target = None;
-                        continue;
-                    }
-                };
+            let target_pos = match self.entities.iter().find(|e| e.id == target_id && e.alive) {
+                Some(t) => t.position,
+                None => {
+                    self.entities[i].combat.target = None;
+                    continue;
+                }
+            };
 
             let dist = attacker_pos.distance_to(target_pos);
-            let reach = attacker_radius + target_radius + attack_range;
-            if dist > reach {
+            if dist > attack_range {
                 continue;
             }
 
@@ -581,6 +594,8 @@ impl GameWorld {
             let dmg_max = self.entities[i].combat.attack_damage_max;
             let dmg = self.rng.gen_range(dmg_min..=dmg_max);
             self.entities[i].combat.start_cooldown();
+            self.entities[i].attack_animation =
+                Some(AttackAnimationState::new(target_pos - attacker_pos));
 
             let target_idx = self
                 .entities
@@ -662,6 +677,12 @@ impl GameWorld {
                 hp: e.hp,
                 max_hp: e.max_hp,
                 alive: e.alive,
+                attack_animation: e
+                    .attack_animation
+                    .map(|animation| AttackAnimationRenderData {
+                        direction: animation.direction,
+                        elapsed: animation.elapsed,
+                    }),
             })
             .collect();
 

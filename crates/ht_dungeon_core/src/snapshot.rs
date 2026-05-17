@@ -18,6 +18,12 @@ pub struct TileRenderData {
 }
 
 #[derive(Clone, Debug)]
+pub struct AttackAnimationRenderData {
+    pub direction: Vec2,
+    pub elapsed: f32,
+}
+
+#[derive(Clone, Debug)]
 pub struct EntityRenderData {
     pub id: EntityId,
     pub kind: EntityKind,
@@ -25,6 +31,7 @@ pub struct EntityRenderData {
     pub hp: i32,
     pub max_hp: i32,
     pub alive: bool,
+    pub attack_animation: Option<AttackAnimationRenderData>,
 }
 
 #[derive(Clone, Debug)]
