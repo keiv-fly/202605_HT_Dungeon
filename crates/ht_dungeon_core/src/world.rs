@@ -3,7 +3,9 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
 use crate::commands::PlayerCommand;
-use crate::dungeon::{generate_dungeon, Room, TileKind, TileMap};
+use crate::dungeon::{
+    load_standard_dungeon, DungeonSpawn, DungeonSpawnKind, Room, TileKind, TileMap,
+};
 use crate::entity::{world_to_tile, Entity, EntityId, EntityKind, Faction, ItemId, RatState, Vec2};
 use crate::inventory::{GroundItem, Inventory, ItemKind, PICKUP_RADIUS, RAT_SIGHT_RANGE};
 use crate::pathfinding::{find_path, nearest_walkable};
@@ -19,6 +21,7 @@ pub struct GameWorld {
     pub state: GameState,
     pub map: TileMap,
     pub rooms: Vec<Room>,
+    pub initial_spawns: Vec<DungeonSpawn>,
     pub hero_id: EntityId,
     pub entities: Vec<Entity>,
     pub items: Vec<GroundItem>,
@@ -33,7 +36,7 @@ pub struct GameWorld {
 
 impl GameWorld {
     pub fn new(seed: u64) -> Self {
-        let dungeon = generate_dungeon(seed);
+        let dungeon = load_standard_dungeon();
         let mut world = Self {
             rng_seed: seed,
             tick_count: 0,
@@ -41,6 +44,7 @@ impl GameWorld {
             state: GameState::Running,
             map: dungeon.map,
             rooms: dungeon.rooms,
+            initial_spawns: dungeon.spawns,
             hero_id: EntityId(0),
             entities: Vec::new(),
             items: Vec::new(),
@@ -69,6 +73,11 @@ impl GameWorld {
     }
 
     fn spawn_initial_entities(&mut self) {
+        if !self.initial_spawns.is_empty() {
+            self.spawn_map_entities();
+            return;
+        }
+
         let hero_room = self.rooms[0].clone();
         let (hx, hy) = hero_room.center();
         let hero_pos = Vec2::new(hx as f32 + 0.5, hy as f32 + 0.5);
@@ -91,6 +100,32 @@ impl GameWorld {
             for _ in 0..count {
                 self.try_spawn_rat(room, hero_pos);
             }
+        }
+    }
+
+    fn spawn_map_entities(&mut self) {
+        let hero_spawn = self
+            .initial_spawns
+            .iter()
+            .find(|spawn| spawn.kind == DungeonSpawnKind::Hero)
+            .copied()
+            .expect("starting dungeon map must contain a hero spawn");
+        let (hx, hy) = hero_spawn.center_f();
+        let hero_pos = Vec2::new(hx, hy);
+        let hero_id = self.alloc_entity_id();
+        self.hero_id = hero_id;
+        self.entities.push(Entity::new_hero(hero_id, hero_pos));
+
+        let rat_spawns: Vec<DungeonSpawn> = self
+            .initial_spawns
+            .iter()
+            .filter(|spawn| spawn.kind == DungeonSpawnKind::Rat)
+            .copied()
+            .collect();
+        for spawn in rat_spawns {
+            let (rx, ry) = spawn.center_f();
+            let id = self.alloc_entity_id();
+            self.entities.push(Entity::new_rat(id, Vec2::new(rx, ry)));
         }
     }
 

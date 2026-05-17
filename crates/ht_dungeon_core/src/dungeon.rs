@@ -6,6 +6,7 @@ use rand_chacha::ChaCha8Rng;
 pub const MAP_WIDTH: u32 = 80;
 pub const MAP_HEIGHT: u32 = 60;
 pub const ROOM_COUNT: usize = 10;
+pub const STANDARD_DUNGEON_MAP: &str = include_str!("../../../assets/maps/standard_dungeon.txt");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TileKind {
@@ -149,7 +150,99 @@ impl Room {
 pub struct Dungeon {
     pub map: TileMap,
     pub rooms: Vec<Room>,
+    pub spawns: Vec<DungeonSpawn>,
     pub seed: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DungeonSpawnKind {
+    Hero,
+    Rat,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DungeonSpawn {
+    pub kind: DungeonSpawnKind,
+    pub x: i32,
+    pub y: i32,
+}
+
+impl DungeonSpawn {
+    pub fn center_f(&self) -> (f32, f32) {
+        (self.x as f32 + 0.5, self.y as f32 + 0.5)
+    }
+}
+
+pub fn load_standard_dungeon() -> Dungeon {
+    parse_dungeon_map(STANDARD_DUNGEON_MAP, 0)
+}
+
+fn parse_dungeon_map(source: &str, seed: u64) -> Dungeon {
+    let rows: Vec<&str> = source
+        .lines()
+        .filter(|line| {
+            let trimmed = line.trim();
+            !trimmed.is_empty() && !trimmed.starts_with(';')
+        })
+        .collect();
+
+    assert!(!rows.is_empty(), "dungeon map must contain a grid");
+
+    let width = rows[0].chars().count();
+    assert!(width > 0, "dungeon map must be at least one tile wide");
+    for row in &rows {
+        assert_eq!(
+            row.chars().count(),
+            width,
+            "dungeon map rows must all have the same width"
+        );
+    }
+
+    let mut map = TileMap::new(width as u32, rows.len() as u32);
+    let mut spawns = Vec::new();
+
+    for (y, row) in rows.iter().enumerate() {
+        for (x, ch) in row.chars().enumerate() {
+            let x = x as i32;
+            let y = y as i32;
+            match ch {
+                '#' => {}
+                '.' => map.set_floor(x, y),
+                '@' => {
+                    map.set_floor(x, y);
+                    spawns.push(DungeonSpawn {
+                        kind: DungeonSpawnKind::Hero,
+                        x,
+                        y,
+                    });
+                }
+                'r' => {
+                    map.set_floor(x, y);
+                    spawns.push(DungeonSpawn {
+                        kind: DungeonSpawnKind::Rat,
+                        x,
+                        y,
+                    });
+                }
+                other => panic!("unsupported dungeon map character: {other:?}"),
+            }
+        }
+    }
+
+    let hero_count = spawns
+        .iter()
+        .filter(|spawn| spawn.kind == DungeonSpawnKind::Hero)
+        .count();
+    assert_eq!(hero_count, 1, "dungeon map must contain exactly one hero");
+
+    map.dirty_chunks.clear();
+
+    Dungeon {
+        map,
+        rooms: Vec::new(),
+        spawns,
+        seed,
+    }
 }
 
 pub fn generate_dungeon(seed: u64) -> Dungeon {
@@ -208,7 +301,12 @@ fn try_generate(rng: &mut ChaCha8Rng, seed: u64) -> Option<Dungeon> {
 
     map.dirty_chunks.clear();
 
-    Some(Dungeon { map, rooms, seed })
+    Some(Dungeon {
+        map,
+        rooms,
+        spawns: Vec::new(),
+        seed,
+    })
 }
 
 fn carve_corridor(map: &mut TileMap, ax: i32, ay: i32, bx: i32, by: i32, h_first: bool) {
