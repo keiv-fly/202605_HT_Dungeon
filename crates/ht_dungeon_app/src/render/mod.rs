@@ -600,6 +600,7 @@ impl Renderer {
         &mut self,
         snapshot: &RenderSnapshot,
         camera: &Camera,
+        show_hero_circle: bool,
         egui_ctx: &egui::Context,
         egui_output: egui::FullOutput,
         pixels_per_point: f32,
@@ -615,7 +616,7 @@ impl Renderer {
         self.queue
             .write_buffer(&self.camera_buf, 0, bytemuck::cast_slice(&vp_flat));
 
-        let batches = build_batches(snapshot);
+        let batches = build_batches(snapshot, show_hero_circle);
         self.upload_batches(&batches);
 
         // Egui texture updates and tessellation
@@ -783,7 +784,7 @@ struct RenderBatches {
     sprites: Vec<SpriteInstance>,
 }
 
-fn build_batches(snapshot: &RenderSnapshot) -> RenderBatches {
+fn build_batches(snapshot: &RenderSnapshot, show_hero_circle: bool) -> RenderBatches {
     let mut quads =
         Vec::with_capacity(snapshot.tiles.len() + snapshot.entities.len() + snapshot.items.len());
     let mut circles = Vec::with_capacity(1);
@@ -817,12 +818,14 @@ fn build_batches(snapshot: &RenderSnapshot) -> RenderBatches {
         }
         match e.kind {
             EntityKind::Hero => {
-                circles.push(QuadInstance {
-                    world_pos: [e.position.x, e.position.y],
-                    size: HERO_MARKER_SIZE,
-                    _pad: 0.0,
-                    color: HERO_MARKER_COLOR,
-                });
+                if show_hero_circle {
+                    circles.push(QuadInstance {
+                        world_pos: [e.position.x, e.position.y],
+                        size: HERO_MARKER_SIZE,
+                        _pad: 0.0,
+                        color: HERO_MARKER_COLOR,
+                    });
+                }
                 sprites.push(SpriteInstance {
                     world_pos: [e.position.x, e.position.y],
                     size: [HERO_WORLD_WIDTH, HERO_WORLD_HEIGHT],

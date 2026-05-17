@@ -18,6 +18,7 @@ use ht_dungeon_core::world::GameWorld;
 
 use camera::Camera;
 use input::InputState;
+use ui::{DebugCommand, DebugUiState};
 
 const TICK_RATE: u64 = 60;
 const TICK_DURATION: Duration = Duration::from_nanos(1_000_000_000 / TICK_RATE);
@@ -29,6 +30,8 @@ struct RenderState {
     egui_winit: egui_winit::State,
     camera: Camera,
     input: InputState,
+    debug_ui: DebugUiState,
+    show_hero_circle: bool,
     snapshot: Option<RenderSnapshot>,
     initial_camera_centered: bool,
     command_tx: Sender<PlayerCommand>,
@@ -92,6 +95,8 @@ impl ApplicationHandler for App {
             egui_winit,
             camera,
             input,
+            debug_ui: DebugUiState::default(),
+            show_hero_circle: false,
             snapshot: None,
             initial_camera_centered: false,
             command_tx,
@@ -122,13 +127,22 @@ impl ApplicationHandler for App {
             WindowEvent::KeyboardInput {
                 event: key_event, ..
             } if !egui_consumed => {
+                use winit::event::ElementState;
+                use winit::keyboard::{KeyCode, PhysicalKey};
+
+                if key_event.physical_key == PhysicalKey::Code(KeyCode::Backquote)
+                    && key_event.state == ElementState::Pressed
+                    && !key_event.repeat
+                {
+                    state.debug_ui.visible = !state.debug_ui.visible;
+                    return;
+                }
+
                 if let Some(cmd) = state.input.on_key(key_event.physical_key, key_event.state) {
                     let _ = state.command_tx.try_send(cmd);
                 }
 
                 // Center camera on hero with C
-                use winit::event::ElementState;
-                use winit::keyboard::{KeyCode, PhysicalKey};
                 if key_event.physical_key == PhysicalKey::Code(KeyCode::KeyC)
                     && key_event.state == ElementState::Pressed
                 {
@@ -188,7 +202,15 @@ impl ApplicationHandler for App {
                 let raw_input = state.egui_winit.take_egui_input(state.window.as_ref());
                 let egui_output = state.egui_ctx.run(raw_input, |ctx| {
                     if let Some(snap) = &state.snapshot {
-                        ui::draw_ui(ctx, snap);
+                        let debug_commands =
+                            ui::draw_ui(ctx, snap, &mut state.debug_ui, state.show_hero_circle);
+                        for command in debug_commands {
+                            match command {
+                                DebugCommand::ToggleHeroCircle => {
+                                    state.show_hero_circle = !state.show_hero_circle;
+                                }
+                            }
+                        }
                     }
                 });
                 state.egui_winit.handle_platform_output(
@@ -201,6 +223,7 @@ impl ApplicationHandler for App {
                     match state.renderer.render(
                         snap,
                         &state.camera,
+                        state.show_hero_circle,
                         &state.egui_ctx,
                         egui_output,
                         ppp,

@@ -1,7 +1,25 @@
 use egui::Context;
 use ht_dungeon_core::snapshot::{GameState, RenderSnapshot};
 
-pub fn draw_ui(ctx: &Context, snapshot: &RenderSnapshot) {
+#[derive(Default)]
+pub struct DebugUiState {
+    pub visible: bool,
+    command_input: String,
+    last_message: Option<String>,
+}
+
+pub enum DebugCommand {
+    ToggleHeroCircle,
+}
+
+pub fn draw_ui(
+    ctx: &Context,
+    snapshot: &RenderSnapshot,
+    debug: &mut DebugUiState,
+    show_hero_circle: bool,
+) -> Vec<DebugCommand> {
+    let mut commands = Vec::new();
+
     draw_hud(ctx, snapshot);
 
     if snapshot.inventory.show_panel {
@@ -17,6 +35,12 @@ pub fn draw_ui(ctx: &Context, snapshot: &RenderSnapshot) {
         GameState::Victory => draw_victory(ctx, snapshot.inventory.rat_tails),
         _ => {}
     }
+
+    if debug.visible {
+        draw_debug(ctx, snapshot, debug, show_hero_circle, &mut commands);
+    }
+
+    commands
 }
 
 fn draw_hud(ctx: &Context, snapshot: &RenderSnapshot) {
@@ -83,4 +107,58 @@ fn draw_victory(ctx: &Context, tails: u32) {
             ui.heading("All rats slain!");
             ui.label(format!("Rat Tails collected: {tails}"));
         });
+}
+
+fn draw_debug(
+    ctx: &Context,
+    snapshot: &RenderSnapshot,
+    debug: &mut DebugUiState,
+    show_hero_circle: bool,
+    commands: &mut Vec<DebugCommand>,
+) {
+    egui::Window::new("Debug")
+        .default_pos([8.0, 120.0])
+        .show(ctx, |ui| {
+            ui.label("Commands");
+            ui.monospace("/show_circle");
+            ui.separator();
+            ui.label(format!("Hero circle: {}", on_off(show_hero_circle)));
+            ui.label(format!("Frame: {}", snapshot.frame_id));
+            ui.label(format!("Sim time: {:.2}", snapshot.sim_time));
+
+            let response = ui.text_edit_singleline(&mut debug.command_input);
+            let submitted =
+                response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter));
+
+            if ui.button("Run").clicked() || submitted {
+                submit_debug_command(debug, commands);
+            }
+
+            if let Some(message) = &debug.last_message {
+                ui.label(message);
+            }
+        });
+}
+
+fn submit_debug_command(debug: &mut DebugUiState, commands: &mut Vec<DebugCommand>) {
+    let command = debug.command_input.trim();
+    match command {
+        "/show_circle" => {
+            commands.push(DebugCommand::ToggleHeroCircle);
+            debug.last_message = Some("Toggled hero circle.".to_owned());
+            debug.command_input.clear();
+        }
+        "" => {}
+        _ => {
+            debug.last_message = Some(format!("Unknown command: {command}"));
+        }
+    }
+}
+
+fn on_off(value: bool) -> &'static str {
+    if value {
+        "on"
+    } else {
+        "off"
+    }
 }

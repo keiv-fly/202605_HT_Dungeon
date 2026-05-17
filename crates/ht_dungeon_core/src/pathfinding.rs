@@ -209,30 +209,10 @@ impl Rect {
 fn segment_intersects_rect(a: Vec2, b: Vec2, rect: Rect) -> bool {
     point_inside_rect(a, rect)
         || point_inside_rect(b, rect)
-        || segment_intersects_segment(
-            a,
-            b,
-            rect.min,
-            Vec2::new(rect.max.x, rect.min.y),
-        )
-        || segment_intersects_segment(
-            a,
-            b,
-            Vec2::new(rect.max.x, rect.min.y),
-            rect.max,
-        )
-        || segment_intersects_segment(
-            a,
-            b,
-            rect.max,
-            Vec2::new(rect.min.x, rect.max.y),
-        )
-        || segment_intersects_segment(
-            a,
-            b,
-            Vec2::new(rect.min.x, rect.max.y),
-            rect.min,
-        )
+        || segment_intersects_segment(a, b, rect.min, Vec2::new(rect.max.x, rect.min.y))
+        || segment_intersects_segment(a, b, Vec2::new(rect.max.x, rect.min.y), rect.max)
+        || segment_intersects_segment(a, b, rect.max, Vec2::new(rect.min.x, rect.max.y))
+        || segment_intersects_segment(a, b, Vec2::new(rect.min.x, rect.max.y), rect.min)
 }
 
 fn point_inside_rect(p: Vec2, rect: Rect) -> bool {
