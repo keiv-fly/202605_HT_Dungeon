@@ -57,10 +57,10 @@ struct CameraUniform {
 var<uniform> camera: CameraUniform;
 
 @group(1) @binding(0)
-var hero_texture: texture_2d<f32>;
+var sprite_texture: texture_2d<f32>;
 
 @group(1) @binding(1)
-var hero_sampler: sampler;
+var sprite_sampler: sampler;
 
 struct VertexOutput {
     @builtin(position) clip_pos: vec4<f32>,
@@ -88,7 +88,7 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return textureSample(hero_texture, hero_sampler, in.uv);
+    return textureSample(sprite_texture, sprite_sampler, in.uv);
 }
 "#;
 
@@ -236,6 +236,38 @@ const HERO_SPRITE_VERTS: &[SpriteVertex] = &[
 const HERO_MARKER_COLOR: [f32; 4] = [0.08, 0.28, 0.52, 0.82];
 const HERO_MARKER_SIZE: f32 = 0.58;
 
+const RAT_SPRITE_WIDTH: f32 = 28.0;
+const RAT_SPRITE_HEIGHT: f32 = 17.0;
+const RAT_WORLD_HEIGHT: f32 = 0.45;
+const RAT_WORLD_WIDTH: f32 = RAT_WORLD_HEIGHT * RAT_SPRITE_WIDTH / RAT_SPRITE_HEIGHT;
+
+const CENTERED_SPRITE_VERTS: &[SpriteVertex] = &[
+    SpriteVertex {
+        local_pos: [-0.5, -0.5],
+        uv: [0.0, 0.0],
+    },
+    SpriteVertex {
+        local_pos: [0.5, -0.5],
+        uv: [1.0, 0.0],
+    },
+    SpriteVertex {
+        local_pos: [0.5, 0.5],
+        uv: [1.0, 1.0],
+    },
+    SpriteVertex {
+        local_pos: [-0.5, -0.5],
+        uv: [0.0, 0.0],
+    },
+    SpriteVertex {
+        local_pos: [0.5, 0.5],
+        uv: [1.0, 1.0],
+    },
+    SpriteVertex {
+        local_pos: [-0.5, 0.5],
+        uv: [0.0, 1.0],
+    },
+];
+
 pub struct Renderer {
     pub surface: wgpu::Surface<'static>,
     pub device: wgpu::Device,
@@ -248,16 +280,20 @@ pub struct Renderer {
     quad_vertex_buf: wgpu::Buffer,
     circle_vertex_buf: wgpu::Buffer,
     circle_vertex_count: u32,
-    sprite_vertex_buf: wgpu::Buffer,
+    hero_sprite_vertex_buf: wgpu::Buffer,
+    rat_sprite_vertex_buf: wgpu::Buffer,
     quad_instance_buf: wgpu::Buffer,
     quad_instance_cap: usize,
     circle_instance_buf: wgpu::Buffer,
     circle_instance_cap: usize,
-    sprite_instance_buf: wgpu::Buffer,
-    sprite_instance_cap: usize,
+    hero_sprite_instance_buf: wgpu::Buffer,
+    hero_sprite_instance_cap: usize,
+    rat_sprite_instance_buf: wgpu::Buffer,
+    rat_sprite_instance_cap: usize,
     camera_buf: wgpu::Buffer,
     camera_bg: wgpu::BindGroup,
     hero_texture_bg: wgpu::BindGroup,
+    rat_texture_bg: wgpu::BindGroup,
 
     pub egui_renderer: egui_wgpu::Renderer,
 }
@@ -355,57 +391,6 @@ impl Renderer {
             }],
         });
 
-        let hero_image = image::load_from_memory(include_bytes!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../assets/hero.png"
-        )))
-        .expect("assets/hero.png must be a valid PNG")
-        .to_rgba8();
-        let (hero_width, hero_height) = hero_image.dimensions();
-        let hero_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("hero_texture"),
-            size: wgpu::Extent3d {
-                width: hero_width,
-                height: hero_height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        queue.write_texture(
-            wgpu::ImageCopyTexture {
-                texture: &hero_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &hero_image,
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: Some(4 * hero_width),
-                rows_per_image: Some(hero_height),
-            },
-            wgpu::Extent3d {
-                width: hero_width,
-                height: hero_height,
-                depth_or_array_layers: 1,
-            },
-        );
-        let hero_texture_view = hero_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let hero_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("hero_sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Nearest,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            ..Default::default()
-        });
         let texture_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("texture_bgl"),
             entries: &[
@@ -427,20 +412,25 @@ impl Renderer {
                 },
             ],
         });
-        let hero_texture_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("hero_texture_bg"),
-            layout: &texture_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&hero_texture_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&hero_sampler),
-                },
-            ],
-        });
+        let hero_texture_bg = create_texture_bind_group(
+            &device,
+            &queue,
+            &texture_bgl,
+            "hero",
+            include_bytes!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../assets/hero.png"
+            )),
+            "assets/hero.png",
+        );
+        let rat_texture_bg = create_texture_bind_group(
+            &device,
+            &queue,
+            &texture_bgl,
+            "rat",
+            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../assets/rat.png")),
+            "assets/rat.png",
+        );
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("pipeline_layout"),
@@ -466,9 +456,14 @@ impl Renderer {
             contents: bytemuck::cast_slice(&circle_verts),
             usage: wgpu::BufferUsages::VERTEX,
         });
-        let sprite_vertex_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let hero_sprite_vertex_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("hero_sprite_verts"),
             contents: bytemuck::cast_slice(HERO_SPRITE_VERTS),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let rat_sprite_vertex_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("rat_sprite_verts"),
+            contents: bytemuck::cast_slice(CENTERED_SPRITE_VERTS),
             usage: wgpu::BufferUsages::VERTEX,
         });
 
@@ -484,8 +479,14 @@ impl Renderer {
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let sprite_instance_buf = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("sprite_instance_buf"),
+        let hero_sprite_instance_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("hero_sprite_instance_buf"),
+            size: 0,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let rat_sprite_instance_buf = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("rat_sprite_instance_buf"),
             size: 0,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
@@ -572,16 +573,20 @@ impl Renderer {
             quad_vertex_buf,
             circle_vertex_buf,
             circle_vertex_count,
-            sprite_vertex_buf,
+            hero_sprite_vertex_buf,
+            rat_sprite_vertex_buf,
             quad_instance_buf,
             quad_instance_cap: 0,
             circle_instance_buf,
             circle_instance_cap: 0,
-            sprite_instance_buf,
-            sprite_instance_cap: 0,
+            hero_sprite_instance_buf,
+            hero_sprite_instance_cap: 0,
+            rat_sprite_instance_buf,
+            rat_sprite_instance_cap: 0,
             camera_buf,
             camera_bg,
             hero_texture_bg,
+            rat_texture_bg,
             egui_renderer,
         }
     }
@@ -686,13 +691,22 @@ impl Renderer {
                 pass.draw(0..self.circle_vertex_count, 0..batches.circles.len() as u32);
             }
 
-            if !batches.sprites.is_empty() {
+            if !batches.hero_sprites.is_empty() {
                 pass.set_pipeline(&self.sprite_pipeline);
                 pass.set_bind_group(0, &self.camera_bg, &[]);
                 pass.set_bind_group(1, &self.hero_texture_bg, &[]);
-                pass.set_vertex_buffer(0, self.sprite_vertex_buf.slice(..));
-                pass.set_vertex_buffer(1, self.sprite_instance_buf.slice(..));
-                pass.draw(0..6, 0..batches.sprites.len() as u32);
+                pass.set_vertex_buffer(0, self.hero_sprite_vertex_buf.slice(..));
+                pass.set_vertex_buffer(1, self.hero_sprite_instance_buf.slice(..));
+                pass.draw(0..6, 0..batches.hero_sprites.len() as u32);
+            }
+
+            if !batches.rat_sprites.is_empty() {
+                pass.set_pipeline(&self.sprite_pipeline);
+                pass.set_bind_group(0, &self.camera_bg, &[]);
+                pass.set_bind_group(1, &self.rat_texture_bg, &[]);
+                pass.set_vertex_buffer(0, self.rat_sprite_vertex_buf.slice(..));
+                pass.set_vertex_buffer(1, self.rat_sprite_instance_buf.slice(..));
+                pass.draw(0..6, 0..batches.rat_sprites.len() as u32);
             }
 
             // egui_wgpu 0.29 requires RenderPass<'static>; raw-pointer cast is sound
@@ -734,12 +748,94 @@ impl Renderer {
         upload_instances(
             &self.device,
             &self.queue,
-            &mut self.sprite_instance_buf,
-            &mut self.sprite_instance_cap,
-            "sprite_instance_buf",
-            &batches.sprites,
+            &mut self.hero_sprite_instance_buf,
+            &mut self.hero_sprite_instance_cap,
+            "hero_sprite_instance_buf",
+            &batches.hero_sprites,
+        );
+        upload_instances(
+            &self.device,
+            &self.queue,
+            &mut self.rat_sprite_instance_buf,
+            &mut self.rat_sprite_instance_cap,
+            "rat_sprite_instance_buf",
+            &batches.rat_sprites,
         );
     }
+}
+
+fn create_texture_bind_group(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    texture_bgl: &wgpu::BindGroupLayout,
+    label: &str,
+    bytes: &[u8],
+    asset_path: &str,
+) -> wgpu::BindGroup {
+    let image = image::load_from_memory(bytes)
+        .unwrap_or_else(|_| panic!("{asset_path} must be a valid PNG"))
+        .to_rgba8();
+    let (width, height) = image.dimensions();
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(&format!("{label}_texture")),
+        size: wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        wgpu::ImageCopyTexture {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &image,
+        wgpu::ImageDataLayout {
+            offset: 0,
+            bytes_per_row: Some(4 * width),
+            rows_per_image: Some(height),
+        },
+        wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        },
+    );
+
+    let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        label: Some(&format!("{label}_sampler")),
+        address_mode_u: wgpu::AddressMode::ClampToEdge,
+        address_mode_v: wgpu::AddressMode::ClampToEdge,
+        address_mode_w: wgpu::AddressMode::ClampToEdge,
+        mag_filter: wgpu::FilterMode::Nearest,
+        min_filter: wgpu::FilterMode::Nearest,
+        mipmap_filter: wgpu::FilterMode::Nearest,
+        ..Default::default()
+    });
+
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some(&format!("{label}_texture_bg")),
+        layout: texture_bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(&texture_view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(&sampler),
+            },
+        ],
+    })
 }
 
 fn upload_instances<T: Pod>(
@@ -781,14 +877,16 @@ fn build_circle_vertices(segments: u32) -> Vec<[f32; 2]> {
 struct RenderBatches {
     quads: Vec<QuadInstance>,
     circles: Vec<QuadInstance>,
-    sprites: Vec<SpriteInstance>,
+    hero_sprites: Vec<SpriteInstance>,
+    rat_sprites: Vec<SpriteInstance>,
 }
 
 fn build_batches(snapshot: &RenderSnapshot, show_hero_circle: bool) -> RenderBatches {
     let mut quads =
         Vec::with_capacity(snapshot.tiles.len() + snapshot.entities.len() + snapshot.items.len());
     let mut circles = Vec::with_capacity(1);
-    let mut sprites = Vec::with_capacity(1);
+    let mut hero_sprites = Vec::with_capacity(1);
+    let mut rat_sprites = Vec::new();
 
     for tile in &snapshot.tiles {
         let color = match tile.kind {
@@ -826,17 +924,15 @@ fn build_batches(snapshot: &RenderSnapshot, show_hero_circle: bool) -> RenderBat
                         color: HERO_MARKER_COLOR,
                     });
                 }
-                sprites.push(SpriteInstance {
+                hero_sprites.push(SpriteInstance {
                     world_pos: [e.position.x, e.position.y],
                     size: [HERO_WORLD_WIDTH, HERO_WORLD_HEIGHT],
                 });
             }
             EntityKind::Rat => {
-                quads.push(QuadInstance {
+                rat_sprites.push(SpriteInstance {
                     world_pos: [e.position.x, e.position.y],
-                    size: 0.45,
-                    _pad: 0.0,
-                    color: [0.75, 0.35, 0.20, 1.0],
+                    size: [RAT_WORLD_WIDTH, RAT_WORLD_HEIGHT],
                 });
             }
         }
@@ -845,6 +941,7 @@ fn build_batches(snapshot: &RenderSnapshot, show_hero_circle: bool) -> RenderBat
     RenderBatches {
         quads,
         circles,
-        sprites,
+        hero_sprites,
+        rat_sprites,
     }
 }
