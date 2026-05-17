@@ -33,4 +33,3 @@ pub struct GroundItem {
 }
 
 pub const PICKUP_RADIUS: f32 = 0.5;
-pub const RAT_SIGHT_RANGE: f32 = 7.0;

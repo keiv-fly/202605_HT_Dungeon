@@ -3,6 +3,7 @@ use egui_wgpu::ScreenDescriptor;
 use std::sync::Arc;
 use wgpu::util::DeviceExt;
 
+use ht_dungeon_core::config::AttackAnimationKeyframe;
 use ht_dungeon_core::dungeon::TileKind;
 use ht_dungeon_core::entity::EntityKind;
 use ht_dungeon_core::snapshot::{AttackAnimationRenderData, RenderSnapshot};
@@ -916,7 +917,16 @@ fn build_batches(snapshot: &RenderSnapshot, show_hero_circle: bool) -> RenderBat
         }
         match e.kind {
             EntityKind::Hero => {
-                let attack_offset = attack_animation_offset(e.kind, e.attack_animation.as_ref());
+                let attack_offset = attack_animation_offset(
+                    e.kind,
+                    e.attack_animation.as_ref(),
+                    snapshot
+                        .config
+                        .hero
+                        .attack_animation_keyframes
+                        .as_deref()
+                        .unwrap_or(&snapshot.config.standard_attack_animation.keyframes),
+                );
                 if show_hero_circle {
                     circles.push(QuadInstance {
                         world_pos: [e.position.x, e.position.y],
@@ -934,7 +944,17 @@ fn build_batches(snapshot: &RenderSnapshot, show_hero_circle: bool) -> RenderBat
                 });
             }
             EntityKind::Rat => {
-                let attack_offset = attack_animation_offset(e.kind, e.attack_animation.as_ref());
+                let attack_offset = attack_animation_offset(
+                    e.kind,
+                    e.attack_animation.as_ref(),
+                    snapshot
+                        .config
+                        .rat
+                        .actor
+                        .attack_animation_keyframes
+                        .as_deref()
+                        .unwrap_or(&snapshot.config.standard_attack_animation.keyframes),
+                );
                 rat_sprites.push(SpriteInstance {
                     world_pos: [
                         e.position.x + attack_offset[0],
@@ -957,27 +977,13 @@ fn build_batches(snapshot: &RenderSnapshot, show_hero_circle: bool) -> RenderBat
 fn attack_animation_offset(
     kind: EntityKind,
     animation: Option<&AttackAnimationRenderData>,
+    keyframes: &[AttackAnimationKeyframe],
 ) -> [f32; 2] {
     let Some(animation) = animation else {
         return [0.0, 0.0];
     };
 
-    let pixels = match kind {
-        EntityKind::Hero => sample_timeline(
-            animation.elapsed,
-            &[
-                (0.0, 0.0),
-                (0.08, -2.0),
-                (0.14, 7.0),
-                (0.22, 3.0),
-                (0.36, 0.0),
-            ],
-        ),
-        EntityKind::Rat => sample_timeline(
-            animation.elapsed,
-            &[(0.0, 0.0), (0.06, -1.0), (0.11, 6.0), (0.21, 0.0)],
-        ),
-    };
+    let pixels = sample_timeline(animation.elapsed, keyframes);
     let world_per_pixel = match kind {
         EntityKind::Hero => HERO_WORLD_HEIGHT / HERO_SPRITE_HEIGHT,
         EntityKind::Rat => RAT_WORLD_HEIGHT / RAT_SPRITE_HEIGHT,
@@ -989,19 +995,21 @@ fn attack_animation_offset(
     ]
 }
 
-fn sample_timeline(elapsed: f32, keys: &[(f32, f32)]) -> f32 {
-    if elapsed <= keys[0].0 {
-        return keys[0].1;
+fn sample_timeline(elapsed: f32, keys: &[AttackAnimationKeyframe]) -> f32 {
+    if elapsed <= keys[0].time_seconds {
+        return keys[0].offset_pixels;
     }
 
     for window in keys.windows(2) {
-        let (start_time, start_value) = window[0];
-        let (end_time, end_value) = window[1];
+        let start = window[0];
+        let end = window[1];
+        let start_time = start.time_seconds;
+        let end_time = end.time_seconds;
         if elapsed <= end_time {
             let t = ((elapsed - start_time) / (end_time - start_time)).clamp(0.0, 1.0);
-            return start_value + (end_value - start_value) * t;
+            return start.offset_pixels + (end.offset_pixels - start.offset_pixels) * t;
         }
     }
 
-    keys[keys.len() - 1].1
+    keys[keys.len() - 1].offset_pixels
 }

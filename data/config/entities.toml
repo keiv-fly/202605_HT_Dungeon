@@ -1,0 +1,61 @@
+[standard_attack_animation]
+
+[[standard_attack_animation.keyframes]]
+time_seconds = 0.0
+offset_pixels = 0.0
+
+[[standard_attack_animation.keyframes]]
+time_seconds = 0.06
+offset_pixels = -1.0
+
+[[standard_attack_animation.keyframes]]
+time_seconds = 0.11
+offset_pixels = 6.0
+
+[[standard_attack_animation.keyframes]]
+time_seconds = 0.21
+offset_pixels = 0.0
+
+[hero]
+radius = 0.3
+max_hp = 10
+movement_speed = 3.0
+attack_damage_min = 1
+attack_damage_max = 2
+attack_range = 1.3
+attack_cooldown_seconds = 0.7
+attack_animation_seconds = 0.36
+attack_impact_seconds = 0.14
+
+[[hero.attack_animation_keyframes]]
+time_seconds = 0.0
+offset_pixels = 0.0
+
+[[hero.attack_animation_keyframes]]
+time_seconds = 0.08
+offset_pixels = -2.0
+
+[[hero.attack_animation_keyframes]]
+time_seconds = 0.14
+offset_pixels = 7.0
+
+[[hero.attack_animation_keyframes]]
+time_seconds = 0.22
+offset_pixels = 3.0
+
+[[hero.attack_animation_keyframes]]
+time_seconds = 0.36
+offset_pixels = 0.0
+
+[rat]
+radius = 0.25
+max_hp = 1
+movement_speed = 2.0
+attack_damage_min = 1
+attack_damage_max = 1
+attack_range = 1.2
+attack_cooldown_seconds = 1.0
+attack_animation_seconds = 0.21
+attack_impact_seconds = 0.11
+sight_range = 7.0
+lost_sight_seconds = 2.0

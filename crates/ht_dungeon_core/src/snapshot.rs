@@ -1,3 +1,4 @@
+use crate::config::GameConfig;
 use crate::dungeon::TileKind;
 use crate::entity::{EntityId, EntityKind, ItemId, Vec2};
 use crate::inventory::ItemKind;
@@ -74,6 +75,7 @@ pub enum GameState {
 pub struct RenderSnapshot {
     pub frame_id: u64,
     pub sim_time: f64,
+    pub config: GameConfig,
     pub paused: bool,
     pub map_width: u32,
     pub map_height: u32,

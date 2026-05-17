@@ -6,7 +6,7 @@ use rand_chacha::ChaCha8Rng;
 pub const MAP_WIDTH: u32 = 80;
 pub const MAP_HEIGHT: u32 = 60;
 pub const ROOM_COUNT: usize = 10;
-pub const STANDARD_DUNGEON_MAP: &str = include_str!("../../../assets/maps/standard_dungeon.txt");
+pub const STANDARD_DUNGEON_MAP: &str = include_str!("../../../data/maps/standard_dungeon.txt");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TileKind {

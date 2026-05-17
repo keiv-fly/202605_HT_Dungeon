@@ -3,6 +3,7 @@ mod input;
 mod render;
 mod ui;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -13,6 +14,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
 use ht_dungeon_core::commands::PlayerCommand;
+use ht_dungeon_core::config::GameConfig;
 use ht_dungeon_core::snapshot::RenderSnapshot;
 use ht_dungeon_core::world::GameWorld;
 
@@ -80,8 +82,10 @@ impl ApplicationHandler for App {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos() as u64)
             .unwrap_or(12345);
+        let game_config = GameConfig::load_from_file(game_config_path())
+            .expect("data/config/entities.toml must contain all hero and rat parameters");
 
-        std::thread::spawn(move || logic_thread(seed, command_rx, snapshot_tx));
+        std::thread::spawn(move || logic_thread(seed, game_config, command_rx, snapshot_tx));
 
         let camera = Camera::new(40.0, 30.0);
         let size = window.inner_size();
@@ -248,10 +252,11 @@ impl ApplicationHandler for App {
 
 fn logic_thread(
     seed: u64,
+    game_config: GameConfig,
     command_rx: Receiver<PlayerCommand>,
     snapshot_tx: Sender<RenderSnapshot>,
 ) {
-    let mut world = GameWorld::new(seed);
+    let mut world = GameWorld::new(seed, game_config);
     let mut last_tick = Instant::now();
 
     // Send initial snapshot
@@ -287,6 +292,10 @@ fn logic_thread(
             }
         }
     }
+}
+
+fn game_config_path() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../data/config/entities.toml")
 }
 
 fn main() {

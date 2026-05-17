@@ -1,5 +1,7 @@
 use std::ops::{Add, AddAssign, Mul, Neg, Sub, SubAssign};
 
+use crate::config::ActorConfig;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct EntityId(pub u32);
 
@@ -205,6 +207,24 @@ impl AttackAnimationState {
     }
 }
 
+pub struct PendingAttackDamage {
+    pub target: EntityId,
+    pub amount: i32,
+    pub elapsed: f32,
+    pub delay: f32,
+}
+
+impl PendingAttackDamage {
+    pub fn new(target: EntityId, amount: i32, delay: f32) -> Self {
+        Self {
+            target,
+            amount,
+            elapsed: 0.0,
+            delay,
+        }
+    }
+}
+
 impl CombatState {
     pub fn ready(&self) -> bool {
         self.cooldown_remaining <= 0.0
@@ -232,54 +252,57 @@ pub struct Entity {
     pub movement: MovementState,
     pub combat: CombatState,
     pub attack_animation: Option<AttackAnimationState>,
+    pub pending_attack_damage: Option<PendingAttackDamage>,
     pub rat_ai: Option<RatAiState>,
     pub alive: bool,
 }
 
 impl Entity {
-    pub fn new_hero(id: EntityId, position: Vec2) -> Self {
+    pub fn new_hero(id: EntityId, position: Vec2, config: &ActorConfig) -> Self {
         Self {
             id,
             kind: EntityKind::Hero,
             position,
-            radius: 0.30,
-            hp: 10,
-            max_hp: 10,
+            radius: config.radius,
+            hp: config.max_hp,
+            max_hp: config.max_hp,
             faction: Faction::Player,
-            movement: MovementState::new(3.0),
+            movement: MovementState::new(config.movement_speed),
             combat: CombatState {
-                attack_damage_min: 1,
-                attack_damage_max: 2,
-                attack_range: 1.3,
-                attack_cooldown: 0.7,
+                attack_damage_min: config.attack_damage_min,
+                attack_damage_max: config.attack_damage_max,
+                attack_range: config.attack_range,
+                attack_cooldown: config.attack_cooldown_seconds,
                 cooldown_remaining: 0.0,
                 target: None,
             },
             attack_animation: None,
+            pending_attack_damage: None,
             rat_ai: None,
             alive: true,
         }
     }
 
-    pub fn new_rat(id: EntityId, position: Vec2) -> Self {
+    pub fn new_rat(id: EntityId, position: Vec2, config: &ActorConfig) -> Self {
         Self {
             id,
             kind: EntityKind::Rat,
             position,
-            radius: 0.25,
-            hp: 1,
-            max_hp: 1,
+            radius: config.radius,
+            hp: config.max_hp,
+            max_hp: config.max_hp,
             faction: Faction::Enemy,
-            movement: MovementState::new(2.0),
+            movement: MovementState::new(config.movement_speed),
             combat: CombatState {
-                attack_damage_min: 1,
-                attack_damage_max: 1,
-                attack_range: 1.2,
-                attack_cooldown: 1.0,
+                attack_damage_min: config.attack_damage_min,
+                attack_damage_max: config.attack_damage_max,
+                attack_range: config.attack_range,
+                attack_cooldown: config.attack_cooldown_seconds,
                 cooldown_remaining: 0.0,
                 target: None,
             },
             attack_animation: None,
+            pending_attack_damage: None,
             rat_ai: Some(RatAiState {
                 state: RatState::Idle,
                 lost_sight_timer: 0.0,

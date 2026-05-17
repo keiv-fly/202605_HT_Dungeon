@@ -3,27 +3,26 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 
 use crate::commands::PlayerCommand;
+use crate::config::GameConfig;
 use crate::dungeon::{
     load_standard_dungeon, DungeonSpawn, DungeonSpawnKind, Room, TileKind, TileMap,
 };
 use crate::entity::{
-    world_to_tile, AttackAnimationState, Entity, EntityId, EntityKind, Faction, ItemId, RatState,
-    Vec2,
+    world_to_tile, AttackAnimationState, Entity, EntityId, EntityKind, Faction, ItemId,
+    PendingAttackDamage, RatState, Vec2,
 };
-use crate::inventory::{GroundItem, Inventory, ItemKind, PICKUP_RADIUS, RAT_SIGHT_RANGE};
+use crate::inventory::{GroundItem, Inventory, ItemKind, PICKUP_RADIUS};
 use crate::pathfinding::{find_path, nearest_walkable};
 use crate::snapshot::{
     AttackAnimationRenderData, EntityRenderData, GameState, HeroStatus, InspectInfo, InventoryView,
     ItemRenderData, RenderSnapshot, TileRenderData,
 };
 
-const HERO_ATTACK_ANIMATION_SECONDS: f32 = 0.36;
-const RAT_ATTACK_ANIMATION_SECONDS: f32 = 0.21;
-
 pub struct GameWorld {
     pub rng_seed: u64,
     pub tick_count: u64,
     pub sim_time: f64,
+    pub config: GameConfig,
     pub state: GameState,
     pub map: TileMap,
     pub rooms: Vec<Room>,
@@ -41,12 +40,13 @@ pub struct GameWorld {
 }
 
 impl GameWorld {
-    pub fn new(seed: u64) -> Self {
+    pub fn new(seed: u64, config: GameConfig) -> Self {
         let dungeon = load_standard_dungeon();
         let mut world = Self {
             rng_seed: seed,
             tick_count: 0,
             sim_time: 0.0,
+            config,
             state: GameState::Running,
             map: dungeon.map,
             rooms: dungeon.rooms,
@@ -89,7 +89,8 @@ impl GameWorld {
         let hero_pos = Vec2::new(hx as f32 + 0.5, hy as f32 + 0.5);
         let hero_id = self.alloc_entity_id();
         self.hero_id = hero_id;
-        self.entities.push(Entity::new_hero(hero_id, hero_pos));
+        self.entities
+            .push(Entity::new_hero(hero_id, hero_pos, &self.config.hero));
 
         let rooms = self.rooms.clone();
         for (i, room) in rooms.iter().enumerate() {
@@ -120,7 +121,8 @@ impl GameWorld {
         let hero_pos = Vec2::new(hx, hy);
         let hero_id = self.alloc_entity_id();
         self.hero_id = hero_id;
-        self.entities.push(Entity::new_hero(hero_id, hero_pos));
+        self.entities
+            .push(Entity::new_hero(hero_id, hero_pos, &self.config.hero));
 
         let rat_spawns: Vec<DungeonSpawn> = self
             .initial_spawns
@@ -131,7 +133,11 @@ impl GameWorld {
         for spawn in rat_spawns {
             let (rx, ry) = spawn.center_f();
             let id = self.alloc_entity_id();
-            self.entities.push(Entity::new_rat(id, Vec2::new(rx, ry)));
+            self.entities.push(Entity::new_rat(
+                id,
+                Vec2::new(rx, ry),
+                &self.config.rat.actor,
+            ));
         }
     }
 
@@ -154,7 +160,8 @@ impl GameWorld {
                 continue;
             }
             let id = self.alloc_entity_id();
-            self.entities.push(Entity::new_rat(id, pos));
+            self.entities
+                .push(Entity::new_rat(id, pos, &self.config.rat.actor));
             return;
         }
     }
@@ -179,6 +186,7 @@ impl GameWorld {
 
         self.update_combat_cooldowns(dt);
         self.update_attack_animations(dt);
+        self.update_pending_attack_damage(dt);
         self.update_rat_ai(dt);
         self.update_movement(dt);
         self.resolve_actor_separation();
@@ -375,12 +383,36 @@ impl GameWorld {
             animation.elapsed += dt;
 
             let duration = match e.kind {
-                EntityKind::Hero => HERO_ATTACK_ANIMATION_SECONDS,
-                EntityKind::Rat => RAT_ATTACK_ANIMATION_SECONDS,
+                EntityKind::Hero => self.config.hero.attack_animation_seconds,
+                EntityKind::Rat => self.config.rat.actor.attack_animation_seconds,
             };
             if animation.elapsed >= duration {
                 e.attack_animation = None;
             }
+        }
+    }
+
+    fn update_pending_attack_damage(&mut self, dt: f32) {
+        let mut impacts = Vec::new();
+
+        for e in &mut self.entities {
+            if !e.alive {
+                e.pending_attack_damage = None;
+                continue;
+            }
+
+            let Some(pending) = &mut e.pending_attack_damage else {
+                continue;
+            };
+            pending.elapsed += dt;
+            if pending.elapsed >= pending.delay {
+                impacts.push((pending.target, pending.amount));
+                e.pending_attack_damage = None;
+            }
+        }
+
+        for (target_id, amount) in impacts {
+            self.apply_damage(target_id, amount);
         }
     }
 
@@ -395,7 +427,7 @@ impl GameWorld {
 
         for i in entity_indices {
             let dist = self.entities[i].position.distance_to(hero_pos);
-            let can_see = dist <= RAT_SIGHT_RANGE
+            let can_see = dist <= self.config.rat.sight_range
                 && line_of_sight(map_ref, self.entities[i].position, hero_pos);
 
             let state = &self.entities[i].rat_ai.as_ref().unwrap().state;
@@ -437,7 +469,7 @@ impl GameWorld {
                 if !can_see && matches!(ai.state, RatState::ChasingHero) {
                     ai.lost_sight_timer -= dt;
                 } else if can_see {
-                    ai.lost_sight_timer = 2.0;
+                    ai.lost_sight_timer = self.config.rat.lost_sight_seconds;
                 }
                 ai.state = new_state;
             }
@@ -560,8 +592,6 @@ impl GameWorld {
     }
 
     fn execute_attacks(&mut self) {
-        let hero_id = self.hero_id;
-
         for i in 0..self.entities.len() {
             if !self.entities[i].alive || !self.entities[i].combat.ready() {
                 continue;
@@ -596,29 +626,39 @@ impl GameWorld {
             self.entities[i].combat.start_cooldown();
             self.entities[i].attack_animation =
                 Some(AttackAnimationState::new(target_pos - attacker_pos));
+            let impact_delay = match self.entities[i].kind {
+                EntityKind::Hero => self.config.hero.attack_impact_seconds,
+                EntityKind::Rat => self.config.rat.actor.attack_impact_seconds,
+            };
+            self.entities[i].pending_attack_damage =
+                Some(PendingAttackDamage::new(target_id, dmg, impact_delay));
+        }
+    }
 
-            let target_idx = self
-                .entities
-                .iter()
-                .position(|e| e.id == target_id)
-                .unwrap();
-            self.entities[target_idx].take_damage(dmg);
+    fn apply_damage(&mut self, target_id: EntityId, dmg: i32) {
+        let Some(target_idx) = self
+            .entities
+            .iter()
+            .position(|e| e.id == target_id && e.alive)
+        else {
+            return;
+        };
 
-            if !self.entities[target_idx].alive && self.entities[target_idx].kind == EntityKind::Rat
-            {
-                let drop_pos = self.entities[target_idx].position;
-                let item_id = self.alloc_item_id();
-                self.items.push(GroundItem {
-                    id: item_id,
-                    kind: ItemKind::RatTail,
-                    count: 1,
-                    position: drop_pos,
-                });
-            }
+        self.entities[target_idx].take_damage(dmg);
 
-            if !self.entities[target_idx].alive && target_id == hero_id {
-                self.state = GameState::GameOver;
-            }
+        if !self.entities[target_idx].alive && self.entities[target_idx].kind == EntityKind::Rat {
+            let drop_pos = self.entities[target_idx].position;
+            let item_id = self.alloc_item_id();
+            self.items.push(GroundItem {
+                id: item_id,
+                kind: ItemKind::RatTail,
+                count: 1,
+                position: drop_pos,
+            });
+        }
+
+        if !self.entities[target_idx].alive && target_id == self.hero_id {
+            self.state = GameState::GameOver;
         }
     }
 
@@ -701,6 +741,7 @@ impl GameWorld {
         RenderSnapshot {
             frame_id: self.frame_id,
             sim_time: self.sim_time,
+            config: self.config.clone(),
             paused: matches!(self.state, GameState::Paused),
             map_width: self.map.width,
             map_height: self.map.height,
