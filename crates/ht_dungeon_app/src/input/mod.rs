@@ -1,8 +1,8 @@
-use winit::event::{ElementState, MouseButton};
-use winit::keyboard::{KeyCode, PhysicalKey};
+use crate::camera::Camera;
 use ht_dungeon_core::commands::PlayerCommand;
 use ht_dungeon_core::entity::Vec2;
-use crate::camera::Camera;
+use winit::event::{ElementState, MouseButton};
+use winit::keyboard::{KeyCode, PhysicalKey};
 
 #[derive(Default)]
 pub struct InputState {
@@ -20,21 +20,33 @@ impl InputState {
     pub fn on_key(&mut self, key: PhysicalKey, state: ElementState) -> Option<PlayerCommand> {
         let pressed = state == ElementState::Pressed;
         match key {
-            PhysicalKey::Code(KeyCode::KeyW) => { self.w_held = pressed; None }
-            PhysicalKey::Code(KeyCode::KeyA) => { self.a_held = pressed; None }
-            PhysicalKey::Code(KeyCode::KeyS) => { self.s_held = pressed; None }
-            PhysicalKey::Code(KeyCode::KeyD) => { self.d_held = pressed; None }
-            PhysicalKey::Code(KeyCode::KeyQ) => { self.q_held = pressed; None }
-            PhysicalKey::Code(KeyCode::KeyE) => { self.e_held = pressed; None }
-            PhysicalKey::Code(KeyCode::Space) if pressed => {
-                Some(PlayerCommand::TogglePause)
+            PhysicalKey::Code(KeyCode::KeyW) => {
+                self.w_held = pressed;
+                None
             }
-            PhysicalKey::Code(KeyCode::KeyI) if pressed => {
-                Some(PlayerCommand::ToggleInventory)
+            PhysicalKey::Code(KeyCode::KeyA) => {
+                self.a_held = pressed;
+                None
             }
-            PhysicalKey::Code(KeyCode::Escape) if pressed => {
-                Some(PlayerCommand::TogglePause)
+            PhysicalKey::Code(KeyCode::KeyS) => {
+                self.s_held = pressed;
+                None
             }
+            PhysicalKey::Code(KeyCode::KeyD) => {
+                self.d_held = pressed;
+                None
+            }
+            PhysicalKey::Code(KeyCode::KeyQ) => {
+                self.q_held = pressed;
+                None
+            }
+            PhysicalKey::Code(KeyCode::KeyE) => {
+                self.e_held = pressed;
+                None
+            }
+            PhysicalKey::Code(KeyCode::Space) if pressed => Some(PlayerCommand::TogglePause),
+            PhysicalKey::Code(KeyCode::KeyI) if pressed => Some(PlayerCommand::ToggleInventory),
+            PhysicalKey::Code(KeyCode::Escape) if pressed => Some(PlayerCommand::TogglePause),
             PhysicalKey::Code(KeyCode::KeyC) if pressed => None, // handled in update_camera
             _ => None,
         }
@@ -65,12 +77,23 @@ impl InputState {
 
     pub fn update_camera(&self, camera: &mut Camera, dt: f32, _hero_pos: Option<(f32, f32)>) {
         let pan_speed = camera.zoom * 0.8 * dt;
-        if self.w_held { camera.pan(0.0, -pan_speed); }
-        if self.s_held { camera.pan(0.0,  pan_speed); }
-        if self.a_held { camera.pan(-pan_speed, 0.0); }
-        if self.d_held { camera.pan( pan_speed, 0.0); }
-        if self.q_held { camera.zoom_out(); }
-        if self.e_held { camera.zoom_in(); }
+        if self.w_held {
+            camera.pan(0.0, -pan_speed);
+        }
+        if self.s_held {
+            camera.pan(0.0, pan_speed);
+        }
+        if self.a_held {
+            camera.pan(-pan_speed, 0.0);
+        }
+        if self.d_held {
+            camera.pan(pan_speed, 0.0);
+        }
+        if self.q_held {
+            camera.zoom_out();
+        }
+        if self.e_held {
+            camera.zoom_in();
+        }
     }
-
 }

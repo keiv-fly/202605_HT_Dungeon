@@ -30,6 +30,7 @@ struct RenderState {
     camera: Camera,
     input: InputState,
     snapshot: Option<RenderSnapshot>,
+    initial_camera_centered: bool,
     command_tx: Sender<PlayerCommand>,
     snapshot_rx: Receiver<RenderSnapshot>,
     last_frame: Instant,
@@ -93,6 +94,7 @@ impl ApplicationHandler for App {
                 ..Default::default()
             },
             snapshot: None,
+            initial_camera_centered: false,
             command_tx,
             snapshot_rx,
             last_frame: Instant::now(),
@@ -118,14 +120,16 @@ impl ApplicationHandler for App {
                 state.input.screen_size = (size.width as f32, size.height as f32);
             }
 
-            WindowEvent::KeyboardInput { event: key_event, .. } if !egui_consumed => {
+            WindowEvent::KeyboardInput {
+                event: key_event, ..
+            } if !egui_consumed => {
                 if let Some(cmd) = state.input.on_key(key_event.physical_key, key_event.state) {
                     let _ = state.command_tx.try_send(cmd);
                 }
 
                 // Center camera on hero with C
-                use winit::keyboard::{KeyCode, PhysicalKey};
                 use winit::event::ElementState;
+                use winit::keyboard::{KeyCode, PhysicalKey};
                 if key_event.physical_key == PhysicalKey::Code(KeyCode::KeyC)
                     && key_event.state == ElementState::Pressed
                 {
@@ -140,8 +144,15 @@ impl ApplicationHandler for App {
                 state.input.cursor_pos = (position.x as f32, position.y as f32);
             }
 
-            WindowEvent::MouseInput { button, state: btn_state, .. } if !egui_consumed => {
-                if let Some(cmd) = state.input.on_mouse_button(button, btn_state, &state.camera) {
+            WindowEvent::MouseInput {
+                button,
+                state: btn_state,
+                ..
+            } if !egui_consumed => {
+                if let Some(cmd) = state
+                    .input
+                    .on_mouse_button(button, btn_state, &state.camera)
+                {
                     let _ = state.command_tx.try_send(cmd);
                 }
             }
@@ -161,6 +172,11 @@ impl ApplicationHandler for App {
 
                 // Drain newest snapshot
                 while let Ok(snap) = state.snapshot_rx.try_recv() {
+                    if !state.initial_camera_centered {
+                        state.camera.x = snap.hero_status.position.x;
+                        state.camera.y = snap.hero_status.position.y;
+                        state.initial_camera_centered = true;
+                    }
                     state.snapshot = Some(snap);
                 }
 
@@ -173,13 +189,20 @@ impl ApplicationHandler for App {
                         ui::draw_ui(ctx, snap);
                     }
                 });
-                state
-                    .egui_winit
-                    .handle_platform_output(state.window.as_ref(), egui_output.platform_output.clone());
+                state.egui_winit.handle_platform_output(
+                    state.window.as_ref(),
+                    egui_output.platform_output.clone(),
+                );
 
                 if let Some(snap) = &state.snapshot {
                     let ppp = state.window.scale_factor() as f32;
-                    match state.renderer.render(snap, &state.camera, &state.egui_ctx, egui_output, ppp) {
+                    match state.renderer.render(
+                        snap,
+                        &state.camera,
+                        &state.egui_ctx,
+                        egui_output,
+                        ppp,
+                    ) {
                         Ok(_) => {}
                         Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
                             let size = state.renderer.size;

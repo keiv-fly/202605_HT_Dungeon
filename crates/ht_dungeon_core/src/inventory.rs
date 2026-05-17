@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use crate::entity::{ItemId, Vec2};
+use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ItemKind {

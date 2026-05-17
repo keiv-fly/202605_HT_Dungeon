@@ -1,7 +1,7 @@
-use std::collections::{BinaryHeap, HashMap};
-use std::cmp::Ordering;
 use crate::dungeon::TileMap;
-use crate::entity::{Vec2, world_to_tile};
+use crate::entity::{world_to_tile, Vec2};
+use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap};
 
 const ORTHO_COST: f32 = 1.0;
 const DIAG_COST: f32 = 1.4142;
@@ -56,12 +56,23 @@ pub fn find_path(map: &TileMap, start: Vec2, goal: Vec2) -> Option<Vec<Vec2>> {
     let mut came_from: HashMap<(i32, i32), (i32, i32)> = HashMap::new();
 
     let h0 = octile(sc.x, sc.y, gc.x, gc.y);
-    open.push(Node { f: h0, g: 0.0, x: sc.x, y: sc.y });
+    open.push(Node {
+        f: h0,
+        g: 0.0,
+        x: sc.x,
+        y: sc.y,
+    });
     g_map.insert((sc.x, sc.y), 0.0);
 
     const DIRS: [(i32, i32); 8] = [
-        (1, 0), (-1, 0), (0, 1), (0, -1),
-        (1, 1), (1, -1), (-1, 1), (-1, -1),
+        (1, 0),
+        (-1, 0),
+        (0, 1),
+        (0, -1),
+        (1, 1),
+        (1, -1),
+        (-1, 1),
+        (-1, -1),
     ];
 
     while let Some(Node { g, x, y, .. }) = open.pop() {
@@ -92,7 +103,12 @@ pub fn find_path(map: &TileMap, start: Vec2, goal: Vec2) -> Option<Vec<Vec2>> {
                 g_map.insert((nx, ny), ng);
                 came_from.insert((nx, ny), (x, y));
                 let h = octile(nx, ny, gc.x, gc.y);
-                open.push(Node { f: ng + h, g: ng, x: nx, y: ny });
+                open.push(Node {
+                    f: ng + h,
+                    g: ng,
+                    x: nx,
+                    y: ny,
+                });
             }
         }
     }
@@ -100,7 +116,11 @@ pub fn find_path(map: &TileMap, start: Vec2, goal: Vec2) -> Option<Vec<Vec2>> {
     None
 }
 
-fn reconstruct(came_from: HashMap<(i32, i32), (i32, i32)>, end: (i32, i32), goal: Vec2) -> Vec<Vec2> {
+fn reconstruct(
+    came_from: HashMap<(i32, i32), (i32, i32)>,
+    end: (i32, i32),
+    goal: Vec2,
+) -> Vec<Vec2> {
     let mut path = Vec::new();
     let mut cur = end;
     while let Some(&prev) = came_from.get(&cur) {

@@ -1,15 +1,15 @@
 use rand::Rng;
-use rand_chacha::ChaCha8Rng;
 use rand::SeedableRng;
+use rand_chacha::ChaCha8Rng;
 
 use crate::commands::PlayerCommand;
 use crate::dungeon::{generate_dungeon, Room, TileKind, TileMap};
-use crate::entity::{Entity, EntityId, EntityKind, Faction, ItemId, RatState, Vec2, world_to_tile};
+use crate::entity::{world_to_tile, Entity, EntityId, EntityKind, Faction, ItemId, RatState, Vec2};
 use crate::inventory::{GroundItem, Inventory, ItemKind, PICKUP_RADIUS, RAT_SIGHT_RANGE};
 use crate::pathfinding::{find_path, nearest_walkable};
 use crate::snapshot::{
-    EntityRenderData, GameState, HeroStatus, InspectInfo, InventoryView,
-    ItemRenderData, RenderSnapshot, TileRenderData,
+    EntityRenderData, GameState, HeroStatus, InspectInfo, InventoryView, ItemRenderData,
+    RenderSnapshot, TileRenderData,
 };
 
 pub struct GameWorld {
@@ -80,7 +80,13 @@ impl GameWorld {
         for (i, room) in rooms.iter().enumerate() {
             let count = match i {
                 0 | 1 => 1,
-                _ => if self.rng.gen_bool(0.5) { 2 } else { 1 },
+                _ => {
+                    if self.rng.gen_bool(0.5) {
+                        2
+                    } else {
+                        1
+                    }
+                }
             };
             for _ in 0..count {
                 self.try_spawn_rat(room, hero_pos);
@@ -96,7 +102,10 @@ impl GameWorld {
             if pos.distance_to(hero_pos) < min_spawn_dist {
                 continue;
             }
-            let occupied = self.entities.iter().any(|e| e.alive && e.position.distance_to(pos) < 0.8);
+            let occupied = self
+                .entities
+                .iter()
+                .any(|e| e.alive && e.position.distance_to(pos) < 0.8);
             if occupied {
                 continue;
             }
@@ -148,7 +157,11 @@ impl GameWorld {
             }
             PlayerCommand::SetPaused(p) => {
                 if matches!(self.state, GameState::Running | GameState::Paused) {
-                    self.state = if p { GameState::Paused } else { GameState::Running };
+                    self.state = if p {
+                        GameState::Paused
+                    } else {
+                        GameState::Running
+                    };
                 }
             }
             PlayerCommand::ToggleInventory => {
@@ -237,7 +250,10 @@ impl GameWorld {
             if item.position.distance_to(world_pos) < 0.4 {
                 return InspectInfo {
                     title: "Rat Tail".to_string(),
-                    lines: vec!["A severed rat tail.".to_string(), format!("Count: {}", item.count)],
+                    lines: vec![
+                        "A severed rat tail.".to_string(),
+                        format!("Count: {}", item.count),
+                    ],
                 };
             }
         }
@@ -255,14 +271,16 @@ impl GameWorld {
     }
 
     fn entity_at_pos(&self, world_pos: Vec2, faction: Faction) -> Option<EntityId> {
-        self.entities.iter()
+        self.entities
+            .iter()
             .filter(|e| e.alive && e.faction == faction)
             .find(|e| e.position.distance_to(world_pos) < e.radius + 0.2)
             .map(|e| e.id)
     }
 
     fn item_at_pos(&self, world_pos: Vec2) -> Option<ItemId> {
-        self.items.iter()
+        self.items
+            .iter()
             .find(|i| i.position.distance_to(world_pos) < 0.4)
             .map(|i| i.id)
     }
@@ -273,7 +291,11 @@ impl GameWorld {
             None => return,
         };
         let hero_pos = self.hero().position;
-        let target_radius = self.entities.iter().find(|e| e.id == enemy_id).map_or(0.25, |e| e.radius);
+        let target_radius = self
+            .entities
+            .iter()
+            .find(|e| e.id == enemy_id)
+            .map_or(0.25, |e| e.radius);
         let stop_dist = self.hero().stop_distance(target_radius);
 
         if hero_pos.distance_to(enemy_pos) > stop_dist + 0.05 {
@@ -311,9 +333,7 @@ impl GameWorld {
         let map_ref = &self.map;
 
         let entity_indices: Vec<usize> = (0..self.entities.len())
-            .filter(|&i| {
-                self.entities[i].kind == EntityKind::Rat && self.entities[i].alive
-            })
+            .filter(|&i| self.entities[i].kind == EntityKind::Rat && self.entities[i].alive)
             .collect();
 
         for i in entity_indices {
@@ -324,7 +344,11 @@ impl GameWorld {
             let state = &self.entities[i].rat_ai.as_ref().unwrap().state;
             let new_state = match state {
                 RatState::Idle => {
-                    if can_see { RatState::ChasingHero } else { RatState::Idle }
+                    if can_see {
+                        RatState::ChasingHero
+                    } else {
+                        RatState::Idle
+                    }
                 }
                 RatState::ChasingHero => {
                     let stop = self.entities[i].stop_distance(0.30);
@@ -334,12 +358,20 @@ impl GameWorld {
                         RatState::ChasingHero
                     } else {
                         let timer = self.entities[i].rat_ai.as_ref().unwrap().lost_sight_timer;
-                        if timer > 0.0 { RatState::ChasingHero } else { RatState::Idle }
+                        if timer > 0.0 {
+                            RatState::ChasingHero
+                        } else {
+                            RatState::Idle
+                        }
                     }
                 }
                 RatState::AttackingHero => {
                     let exit = self.entities[i].attack_exit_range(0.30);
-                    if dist > exit { RatState::ChasingHero } else { RatState::AttackingHero }
+                    if dist > exit {
+                        RatState::ChasingHero
+                    } else {
+                        RatState::AttackingHero
+                    }
                 }
                 RatState::Dead => RatState::Dead,
             };
@@ -389,11 +421,14 @@ impl GameWorld {
 
             let attack_target_id = self.entities[i].movement.attack_target;
             let attack_target_pos = attack_target_id.and_then(|tid| {
-                self.entities.iter().find(|e| e.id == tid && e.alive).map(|e| e.position)
+                self.entities
+                    .iter()
+                    .find(|e| e.id == tid && e.alive)
+                    .map(|e| e.position)
             });
-            let attack_target_radius = attack_target_id.and_then(|tid| {
-                self.entities.iter().find(|e| e.id == tid).map(|e| e.radius)
-            }).unwrap_or(0.25);
+            let attack_target_radius = attack_target_id
+                .and_then(|tid| self.entities.iter().find(|e| e.id == tid).map(|e| e.radius))
+                .unwrap_or(0.25);
 
             let entity = &mut self.entities[i];
 
@@ -484,13 +519,14 @@ impl GameWorld {
                 None => continue,
             };
 
-            let (target_pos, target_radius) = match self.entities.iter().find(|e| e.id == target_id && e.alive) {
-                Some(t) => (t.position, t.radius),
-                None => {
-                    self.entities[i].combat.target = None;
-                    continue;
-                }
-            };
+            let (target_pos, target_radius) =
+                match self.entities.iter().find(|e| e.id == target_id && e.alive) {
+                    Some(t) => (t.position, t.radius),
+                    None => {
+                        self.entities[i].combat.target = None;
+                        continue;
+                    }
+                };
 
             let dist = attacker_pos.distance_to(target_pos);
             let reach = attacker_radius + target_radius + attack_range;
@@ -507,10 +543,15 @@ impl GameWorld {
             let dmg = self.rng.gen_range(dmg_min..=dmg_max);
             self.entities[i].combat.start_cooldown();
 
-            let target_idx = self.entities.iter().position(|e| e.id == target_id).unwrap();
+            let target_idx = self
+                .entities
+                .iter()
+                .position(|e| e.id == target_id)
+                .unwrap();
             self.entities[target_idx].take_damage(dmg);
 
-            if !self.entities[target_idx].alive && self.entities[target_idx].kind == EntityKind::Rat {
+            if !self.entities[target_idx].alive && self.entities[target_idx].kind == EntityKind::Rat
+            {
                 let drop_pos = self.entities[target_idx].position;
                 let item_id = self.alloc_item_id();
                 self.items.push(GroundItem {
@@ -543,7 +584,9 @@ impl GameWorld {
         if matches!(self.state, GameState::GameOver | GameState::Victory) {
             return;
         }
-        let all_rats_dead = self.entities.iter()
+        let all_rats_dead = self
+            .entities
+            .iter()
             .filter(|e| e.kind == EntityKind::Rat)
             .all(|e| !e.alive);
         if all_rats_dead {
@@ -570,20 +613,28 @@ impl GameWorld {
             })
             .collect();
 
-        let entities: Vec<EntityRenderData> = self.entities.iter().map(|e| EntityRenderData {
-            id: e.id,
-            kind: e.kind,
-            position: e.position,
-            hp: e.hp,
-            max_hp: e.max_hp,
-            alive: e.alive,
-        }).collect();
+        let entities: Vec<EntityRenderData> = self
+            .entities
+            .iter()
+            .map(|e| EntityRenderData {
+                id: e.id,
+                kind: e.kind,
+                position: e.position,
+                hp: e.hp,
+                max_hp: e.max_hp,
+                alive: e.alive,
+            })
+            .collect();
 
-        let items: Vec<ItemRenderData> = self.items.iter().map(|i| ItemRenderData {
-            id: i.id,
-            kind: i.kind,
-            position: i.position,
-        }).collect();
+        let items: Vec<ItemRenderData> = self
+            .items
+            .iter()
+            .map(|i| ItemRenderData {
+                id: i.id,
+                kind: i.kind,
+                position: i.position,
+            })
+            .collect();
 
         let hero = self.hero();
 

@@ -48,10 +48,10 @@ impl Camera {
         let cy = self.y;
         // Column-major (WGSL mat4x4): each inner array is one column [row0..row3].
         [
-            [1.0 / hw,  0.0,      0.0, 0.0],
-            [0.0,      -1.0 / hh, 0.0, 0.0],
-            [0.0,       0.0,      1.0, 0.0],
-            [-cx / hw,  cy / hh,  0.0, 1.0],
+            [1.0 / hw, 0.0, 0.0, 0.0],
+            [0.0, -1.0 / hh, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [-cx / hw, cy / hh, 0.0, 1.0],
         ]
     }
 

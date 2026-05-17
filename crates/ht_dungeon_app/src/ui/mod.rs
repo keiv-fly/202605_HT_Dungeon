@@ -14,7 +14,7 @@ pub fn draw_ui(ctx: &Context, snapshot: &RenderSnapshot) {
 
     match snapshot.game_state {
         GameState::GameOver => draw_game_over(ctx),
-        GameState::Victory  => draw_victory(ctx, snapshot.inventory.rat_tails),
+        GameState::Victory => draw_victory(ctx, snapshot.inventory.rat_tails),
         _ => {}
     }
 }

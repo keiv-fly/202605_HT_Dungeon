@@ -1,7 +1,7 @@
-use rand::Rng;
-use rand_chacha::ChaCha8Rng;
-use rand::SeedableRng;
 use crate::snapshot::{ChunkCoord, CHUNK_SIZE};
+use rand::Rng;
+use rand::SeedableRng;
+use rand_chacha::ChaCha8Rng;
 
 pub const MAP_WIDTH: u32 = 80;
 pub const MAP_HEIGHT: u32 = 60;
@@ -22,11 +22,19 @@ pub struct Tile {
 
 impl Tile {
     fn wall() -> Self {
-        Self { kind: TileKind::Wall, hp: Some(10), revision: 0 }
+        Self {
+            kind: TileKind::Wall,
+            hp: Some(10),
+            revision: 0,
+        }
     }
 
     fn floor() -> Self {
-        Self { kind: TileKind::Floor, hp: None, revision: 0 }
+        Self {
+            kind: TileKind::Floor,
+            hp: None,
+            revision: 0,
+        }
     }
 }
 
@@ -40,7 +48,12 @@ pub struct TileMap {
 impl TileMap {
     pub fn new(width: u32, height: u32) -> Self {
         let tiles = vec![Tile::wall(); (width * height) as usize];
-        Self { width, height, tiles, dirty_chunks: Vec::new() }
+        Self {
+            width,
+            height,
+            tiles,
+            dirty_chunks: Vec::new(),
+        }
     }
 
     fn index(&self, x: i32, y: i32) -> Option<usize> {
@@ -125,8 +138,10 @@ impl Room {
 
     pub fn random_interior_point(&self, rng: &mut ChaCha8Rng) -> (i32, i32) {
         let margin = 1;
-        let rx = rng.gen_range((self.x + margin)..(self.x + self.width - margin).max(self.x + margin + 1));
-        let ry = rng.gen_range((self.y + margin)..(self.y + self.height - margin).max(self.y + margin + 1));
+        let rx = rng
+            .gen_range((self.x + margin)..(self.x + self.width - margin).max(self.x + margin + 1));
+        let ry = rng
+            .gen_range((self.y + margin)..(self.y + self.height - margin).max(self.y + margin + 1));
         (rx, ry)
     }
 }
@@ -158,7 +173,13 @@ fn try_generate(rng: &mut ChaCha8Rng, seed: u64) -> Option<Dungeon> {
         let h = rng.gen_range(5..=10);
         let x = rng.gen_range(1..(MAP_WIDTH as i32 - w - 1));
         let y = rng.gen_range(1..(MAP_HEIGHT as i32 - h - 1));
-        let room = Room { id: rooms.len(), x, y, width: w, height: h };
+        let room = Room {
+            id: rooms.len(),
+            x,
+            y,
+            width: w,
+            height: h,
+        };
         if rooms.iter().any(|r| r.overlaps_with_padding(&room)) {
             continue;
         }
