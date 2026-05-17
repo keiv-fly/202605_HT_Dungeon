@@ -1,4 +1,4 @@
-use crate::dungeon::TileMap;
+use crate::dungeon::{TileKind, TileMap};
 use crate::entity::{world_to_tile, Vec2};
 use std::cmp::Ordering;
 use std::collections::{BinaryHeap, HashMap};
@@ -39,7 +39,7 @@ fn diagonal_ok(map: &TileMap, x: i32, y: i32, dx: i32, dy: i32) -> bool {
     map.is_walkable(x + dx, y) && map.is_walkable(x, y + dy)
 }
 
-pub fn find_path(map: &TileMap, start: Vec2, goal: Vec2) -> Option<Vec<Vec2>> {
+pub fn find_path(map: &TileMap, start: Vec2, goal: Vec2, actor_radius: f32) -> Option<Vec<Vec2>> {
     let sc = world_to_tile(start);
     let gc = world_to_tile(goal);
 
@@ -78,7 +78,7 @@ pub fn find_path(map: &TileMap, start: Vec2, goal: Vec2) -> Option<Vec<Vec2>> {
     while let Some(Node { g, x, y, .. }) = open.pop() {
         if x == gc.x && y == gc.y {
             let path = reconstruct(came_from, (x, y), goal);
-            return Some(path);
+            return Some(smooth_path(map, start, path, actor_radius));
         }
 
         let best_g = g_map.get(&(x, y)).copied().unwrap_or(f32::MAX);
@@ -136,6 +136,147 @@ fn reconstruct(
     path
 }
 
+fn smooth_path(map: &TileMap, start: Vec2, path: Vec<Vec2>, actor_radius: f32) -> Vec<Vec2> {
+    if path.len() <= 1 {
+        return path;
+    }
+
+    let mut points = Vec::with_capacity(path.len() + 1);
+    points.push(start);
+    points.extend(path);
+
+    let mut result = Vec::new();
+    let mut current_index = 0;
+    result.push(points[0]);
+
+    while current_index < points.len() - 1 {
+        let mut next_index = points.len() - 1;
+
+        while next_index > current_index + 1 {
+            if has_line_of_sight(map, points[current_index], points[next_index], actor_radius) {
+                break;
+            }
+            next_index -= 1;
+        }
+
+        result.push(points[next_index]);
+        current_index = next_index;
+    }
+
+    result.into_iter().skip(1).collect()
+}
+
+fn has_line_of_sight(map: &TileMap, a: Vec2, b: Vec2, actor_radius: f32) -> bool {
+    let min_x = a.x.min(b.x) - actor_radius;
+    let max_x = a.x.max(b.x) + actor_radius;
+    let min_y = a.y.min(b.y) - actor_radius;
+    let max_y = a.y.max(b.y) + actor_radius;
+
+    let tile_min_x = min_x.floor() as i32;
+    let tile_max_x = max_x.floor() as i32;
+    let tile_min_y = min_y.floor() as i32;
+    let tile_max_y = max_y.floor() as i32;
+
+    for y in tile_min_y..=tile_max_y {
+        for x in tile_min_x..=tile_max_x {
+            if map.tile_kind(x, y) == TileKind::Wall {
+                let rect = Rect::expanded_tile(x, y, actor_radius);
+                if segment_intersects_rect(a, b, rect) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    true
+}
+
+#[derive(Clone, Copy)]
+struct Rect {
+    min: Vec2,
+    max: Vec2,
+}
+
+impl Rect {
+    fn expanded_tile(x: i32, y: i32, radius: f32) -> Self {
+        Self {
+            min: Vec2::new(x as f32 - radius, y as f32 - radius),
+            max: Vec2::new(x as f32 + 1.0 + radius, y as f32 + 1.0 + radius),
+        }
+    }
+}
+
+fn segment_intersects_rect(a: Vec2, b: Vec2, rect: Rect) -> bool {
+    point_inside_rect(a, rect)
+        || point_inside_rect(b, rect)
+        || segment_intersects_segment(
+            a,
+            b,
+            rect.min,
+            Vec2::new(rect.max.x, rect.min.y),
+        )
+        || segment_intersects_segment(
+            a,
+            b,
+            Vec2::new(rect.max.x, rect.min.y),
+            rect.max,
+        )
+        || segment_intersects_segment(
+            a,
+            b,
+            rect.max,
+            Vec2::new(rect.min.x, rect.max.y),
+        )
+        || segment_intersects_segment(
+            a,
+            b,
+            Vec2::new(rect.min.x, rect.max.y),
+            rect.min,
+        )
+}
+
+fn point_inside_rect(p: Vec2, rect: Rect) -> bool {
+    p.x >= rect.min.x && p.x <= rect.max.x && p.y >= rect.min.y && p.y <= rect.max.y
+}
+
+fn segment_intersects_segment(a: Vec2, b: Vec2, c: Vec2, d: Vec2) -> bool {
+    let ab = b - a;
+    let ac = c - a;
+    let ad = d - a;
+    let cd = d - c;
+    let ca = a - c;
+    let cb = b - c;
+
+    let d1 = cross(ab, ac);
+    let d2 = cross(ab, ad);
+    let d3 = cross(cd, ca);
+    let d4 = cross(cd, cb);
+
+    if ((d1 > 0.0 && d2 < 0.0) || (d1 < 0.0 && d2 > 0.0))
+        && ((d3 > 0.0 && d4 < 0.0) || (d3 < 0.0 && d4 > 0.0))
+    {
+        return true;
+    }
+
+    const EPS: f32 = 1e-6;
+    (d1.abs() <= EPS && point_on_segment(c, a, b))
+        || (d2.abs() <= EPS && point_on_segment(d, a, b))
+        || (d3.abs() <= EPS && point_on_segment(a, c, d))
+        || (d4.abs() <= EPS && point_on_segment(b, c, d))
+}
+
+fn point_on_segment(p: Vec2, a: Vec2, b: Vec2) -> bool {
+    const EPS: f32 = 1e-6;
+    p.x >= a.x.min(b.x) - EPS
+        && p.x <= a.x.max(b.x) + EPS
+        && p.y >= a.y.min(b.y) - EPS
+        && p.y <= a.y.max(b.y) + EPS
+}
+
+fn cross(a: Vec2, b: Vec2) -> f32 {
+    a.x * b.y - a.y * b.x
+}
+
 pub fn nearest_walkable(map: &TileMap, target: Vec2) -> Option<Vec2> {
     let tc = world_to_tile(target);
     if map.is_walkable(tc.x, tc.y) {
@@ -166,4 +307,50 @@ pub fn nearest_walkable(map: &TileMap, target: Vec2) -> Option<Vec2> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn open_map(width: u32, height: u32) -> TileMap {
+        let mut map = TileMap::new(width, height);
+        for y in 0..height as i32 {
+            for x in 0..width as i32 {
+                map.set_floor(x, y);
+            }
+        }
+        map
+    }
+
+    #[test]
+    fn smooth_path_removes_visible_intermediate_points() {
+        let map = open_map(6, 6);
+        let start = Vec2::new(1.5, 1.5);
+        let goal = Vec2::new(4.5, 4.5);
+        let raw_path = vec![
+            Vec2::new(2.5, 1.5),
+            Vec2::new(3.5, 2.5),
+            Vec2::new(4.5, 3.5),
+            goal,
+        ];
+
+        let smoothed = smooth_path(&map, start, raw_path, 0.30);
+
+        assert_eq!(smoothed, vec![goal]);
+    }
+
+    #[test]
+    fn line_of_sight_respects_actor_radius_near_walls() {
+        let mut map = open_map(6, 6);
+        if let Some(tile) = map.get_mut(2, 2) {
+            tile.kind = TileKind::Wall;
+        }
+
+        let a = Vec2::new(1.5, 1.75);
+        let b = Vec2::new(3.5, 1.75);
+
+        assert!(has_line_of_sight(&map, a, b, 0.0));
+        assert!(!has_line_of_sight(&map, a, b, 0.30));
+    }
 }

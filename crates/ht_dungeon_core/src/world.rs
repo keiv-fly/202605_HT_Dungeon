@@ -206,7 +206,8 @@ impl GameWorld {
 
         if let Some(goal) = target {
             let hero_pos = self.hero().position;
-            if let Some(path) = find_path(&self.map, hero_pos, goal) {
+            let hero_radius = self.hero().radius;
+            if let Some(path) = find_path(&self.map, hero_pos, goal, hero_radius) {
                 let hero = self.hero_mut();
                 hero.movement.attack_target = None;
                 hero.movement.set_path(path);
@@ -299,7 +300,8 @@ impl GameWorld {
         let stop_dist = self.hero().stop_distance(target_radius);
 
         if hero_pos.distance_to(enemy_pos) > stop_dist + 0.05 {
-            if let Some(path) = find_path(&self.map, hero_pos, enemy_pos) {
+            let hero_radius = self.hero().radius;
+            if let Some(path) = find_path(&self.map, hero_pos, enemy_pos, hero_radius) {
                 let hero = self.hero_mut();
                 hero.movement.attack_target = Some(enemy_id);
                 hero.movement.set_path(path);
@@ -314,7 +316,8 @@ impl GameWorld {
             None => return,
         };
         let hero_pos = self.hero().position;
-        if let Some(path) = find_path(&self.map, hero_pos, item_pos) {
+        let hero_radius = self.hero().radius;
+        if let Some(path) = find_path(&self.map, hero_pos, item_pos, hero_radius) {
             let hero = self.hero_mut();
             hero.movement.attack_target = None;
             hero.movement.set_path(path);
@@ -388,10 +391,11 @@ impl GameWorld {
             match self.entities[i].rat_ai.as_ref().map(|a| a.state) {
                 Some(RatState::ChasingHero) => {
                     let rat_pos = self.entities[i].position;
+                    let rat_radius = self.entities[i].radius;
                     let stop = self.entities[i].stop_distance(0.30);
                     if rat_pos.distance_to(hero_pos) > stop {
                         if self.entities[i].movement.attack_target != Some(hero_id) {
-                            if let Some(path) = find_path(map_ref, rat_pos, hero_pos) {
+                            if let Some(path) = find_path(map_ref, rat_pos, hero_pos, rat_radius) {
                                 self.entities[i].movement.attack_target = Some(hero_id);
                                 self.entities[i].movement.set_path(path);
                             }
