@@ -59,7 +59,6 @@ fn draw_hud(ctx: &Context, snapshot: &RenderSnapshot) {
             if snapshot.paused {
                 ui.colored_label(egui::Color32::YELLOW, "PAUSED");
             }
-            ui.label(format!("Seed: {}", snapshot.rng_seed));
         });
 }
 
