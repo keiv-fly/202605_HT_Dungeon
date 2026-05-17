@@ -202,8 +202,8 @@ const HERO_SPRITE_HEIGHT: f32 = 51.0;
 const HERO_WORLD_HEIGHT: f32 = 1.35;
 const HERO_WORLD_WIDTH: f32 = HERO_WORLD_HEIGHT * HERO_SPRITE_WIDTH / HERO_SPRITE_HEIGHT;
 
-// The legs are visually around x=19, y=44 in the 42x51 sprite.
-const HERO_LEG_ANCHOR_X: f32 = 19.0 / HERO_SPRITE_WIDTH;
+// Keep the circle/gameplay position two source pixels left of the visual leg center.
+const HERO_LEG_ANCHOR_X: f32 = 17.0 / HERO_SPRITE_WIDTH;
 const HERO_LEG_ANCHOR_Y: f32 = 44.0 / HERO_SPRITE_HEIGHT;
 
 const HERO_SPRITE_VERTS: &[SpriteVertex] = &[
